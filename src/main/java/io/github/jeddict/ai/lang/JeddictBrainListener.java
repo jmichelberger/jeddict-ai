@@ -27,6 +27,9 @@ import io.github.jeddict.ai.response.TokenHandler;
 import io.github.jeddict.ai.util.Utilities;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.lang.reflect.InvocationTargetException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.CompletableFuture;
@@ -41,6 +44,7 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import org.netbeans.api.progress.ProgressHandle;
+import org.openide.util.Exceptions;
 import org.openide.util.NbBundle;
 
 /**
@@ -59,7 +63,7 @@ public abstract class JeddictBrainListener
     private final AssistantChat topComponent;
     private boolean init = true;
     private JTextArea textArea;
-    private ProgressHandle handle;
+    private final ProgressHandle handle;
     private boolean complete;
     protected final StringBuilder toolingResponse = new StringBuilder();
 
@@ -81,34 +85,42 @@ public abstract class JeddictBrainListener
         LOG.finest(() -> String.valueOf(e));
         final String name = e.getPropertyName();
 
-        SwingUtilities.invokeLater(() -> {
-            if (name.equals(JeddictBrain.EventProperty.CHAT_TOKENS.name)) {
+
+        if (name.equals(JeddictBrain.EventProperty.CHAT_TOKENS.name)) {
+            SwingUtilities.invokeLater(() -> {
                 final String progress = NbBundle.getMessage(JeddictUpdateManager.class, "ProgressHandle", (int)e.getNewValue());
                 handle.progress(progress);
                 handle.setDisplayName(progress);
-            } else if (name.equals(JeddictBrain.EventProperty.CHAT_PARTIAL.name)) {
-                onPartialResponse((String)e.getNewValue());
-            } else if (name.equals(JeddictBrain.EventProperty.CHAT_COMPLETED.name)) {
-                onCompleteResponse((ChatResponse)e.getNewValue());
-            } else if (name.equals(JeddictBrain.EventProperty.CHAT_ERROR)) {
-                onError((Exception)e.getNewValue());
-            } else if (name.equals(AbstractTool.PROPERTY_MESSAGE)) {
-                final String msg = (String)e.getNewValue() + '\n';
-                toolingResponse.append(msg);
-                onPartialResponse(msg);
-            }
-        });
+            });
+        } else if (name.equals(JeddictBrain.EventProperty.CHAT_PARTIAL.name)) {
+            onPartialResponse((String)e.getNewValue());
+        } else if (name.equals(JeddictBrain.EventProperty.CHAT_COMPLETED.name)) {
+            onCompleteResponse((ChatResponse)e.getNewValue());
+        } else if (name.equals(JeddictBrain.EventProperty.CHAT_ERROR)) {
+            onError((Exception)e.getNewValue());
+        } else if (name.equals(AbstractTool.PROPERTY_MESSAGE)) {
+            final String msg = (String)e.getNewValue() + '\n';
+            toolingResponse.append(msg);
+            onPartialResponse(msg);
+        }
     }
 
     public void onPartialResponse(String partialResponse) {
-        LOG.finest(() -> "partial response: " + partialResponse);
-        if (init) {
-            topComponent.clear();
-            textArea = topComponent.createTextAreaPane();
-            textArea.setText(partialResponse);
-            init = false;
-        } else {
-            textArea.append(partialResponse);
+        try {
+            LOG.finest(() -> "partial response: " + partialResponse);
+
+            SwingUtilities.invokeAndWait(() -> {
+                if (init) {
+                    topComponent.clear();
+                    textArea = topComponent.createTextAreaPane();
+                    textArea.setText(partialResponse);
+                    init = false;
+                } else {
+                    textArea.append(partialResponse);
+                }
+            });
+        } catch (InterruptedException | InvocationTargetException ex) {
+            Exceptions.printStackTrace(ex);
         }
     }
 
